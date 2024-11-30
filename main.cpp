@@ -2,11 +2,14 @@
 
 #define minutes(min) min * 60
 #define hours(hours) hours * 60 * 60
+#define seconds(sec) sec * 1
 
+Facility VoucherMachine("voucher machine");
 Facility Reception("reception");
 Queue ReceptionQueue("reception");
-Facility ComplaintDesk();
+Facility ComplaintDesk("complaint desk");
 Store Consultants(5);
+Queue ConsultantsQueue("consultants");
 Store CoffeeMachines(3);
 // Store ATMs(4);
 // Queue ATMsQueue("atms");
@@ -43,6 +46,7 @@ private:
     bool goesForCoffee;
     bool skipATM;
     void WentForCoffee();
+    void MakeAComplaint(double percent);
 };
 
 class VisitorWantsCoffee : public Process
@@ -66,6 +70,7 @@ public:
         visitor->setGoForCoffee();
     }
 };
+
 // Some fun logic incoming, there it was left
 
 class VisitorGenerator : public Event
@@ -177,6 +182,98 @@ void Visitor::Behavior()
     else
     {
         // Consultants
+        auto isPremium = Random();
+        if (isPremium < 0.85)
+        {
+            Seize(VoucherMachine);
+            Wait(Normal(seconds(20), seconds(5)));
+            Release(VoucherMachine);
+        }
+        while (Consultants.Free() == 0)
+        {
+            // function to check if the visitor goes for coffee
+            Into(ConsultantsQueue);
+            auto wantsCoffee = new VisitorWantsCoffee(this, minutes(8));
+            wantsCoffee->Activate();
+
+            if (goesForCoffee)
+            {
+                // TODO pasha lox
+                Out();
+                WentForCoffee();
+            }
+        }
+        Enter(Consultants);
+
+        // documents check
+        auto isDocumentsValid = Random();
+        if (isDocumentsValid < 0.25)
+        {
+            // No
+            Leave(Consultants);
+            // Make a complaint
+            MakeAComplaint(0.75);
+            return;
+        }
+        else
+        {
+            // Yes
+            Wait(Normal(minutes(10), minutes(2)));
+            Leave(Consultants);
+            auto consulatationProccess = Random();
+            if (consulatationProccess < 0.5)
+            {
+                // Registration
+                Wait(Normal(minutes(20), minutes(5)));
+                Leave(Consultants);
+                return;
+            }
+            else if (consulatationProccess >= 0.5 && consulatationProccess < 0.7)
+            {
+                // Investment plan
+                Wait(Normal(minutes(40), minutes(10)));
+                Leave(Consultants);
+                return;
+            }
+            else if (consulatationProccess >= 0.5 && consulatationProccess < 0.7)
+            {
+                // Fraud investigation
+                Wait(Normal(minutes(10), minutes(2)));
+                auto isSolutionFound = Random();
+                if (isSolutionFound < 0.2)
+                {
+                    // Yes
+                    Leave(Consultants);
+                    return;
+                }
+                else
+                {
+                    // No
+                    Leave(Consultants);
+                    MakeAComplaint(0.8);
+                    return;
+                }
+            }
+            else
+            {
+                // Taking a loan Background check
+                auto isBackgroundCheckValid = Random();
+                if (isBackgroundCheckValid < 0.8)
+                {
+                    // Yes
+                    Wait(Normal(minutes(30), minutes(5)));
+                    Leave(Consultants);
+                    return;
+                }
+                else
+                {
+                    // No
+                    Leave(Consultants);
+                    MakeAComplaint(0.4);
+                    return;
+                }
+            }
+        }
     }
 };
 
@@ -185,6 +282,17 @@ void Visitor::WentForCoffee()
     Enter(CoffeeMachines);
     Wait(minutes(1));
     Leave(CoffeeMachines);
+}
+
+void Visitor::MakeAComplaint(double percent)
+{
+    auto wantsMakeComplaint = random();
+    if (wantsMakeComplaint < percent)
+    {
+        Seize(ComplaintDesk);
+        Wait(minutes(1));
+        Release(ComplaintDesk);
+    }
 }
 
 int main()
