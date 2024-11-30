@@ -35,7 +35,7 @@ public:
 class Visitor : public Process
 {
 public:
-    Visitor();
+    Visitor(): goesForCoffee(false), skipATM(false){}
     void Behavior() override;
     void setGoForCoffee() { goesForCoffee = true; }
     void setSkipATM() { skipATM = true; }
@@ -148,6 +148,7 @@ void Visitor::Behavior()
                 {
                     Out(); // Potential problem source
                     WentForCoffee();
+                    goesForCoffee = false;
                 }
             }
 
@@ -211,6 +212,7 @@ void Visitor::Behavior()
                 {
                     Out(); // Potential problem source
                     WentForCoffee();
+                    goesForCoffee = false;
                 }
             }
             Enter(Consultants);
