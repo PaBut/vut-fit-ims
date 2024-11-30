@@ -1,23 +1,47 @@
 #include "simlib.h"
 
 #define minutes(min) min * 60
+#define hours(hours) hours * 60 * 60
 
 Facility Reception("reception");
 Queue ReceptionQueue("reception");
 Facility ComplaintDesk();
 Store Consultants(5);
 Store CoffeeMachines(3);
-Store ATMs(4);
+// Store ATMs(4);
+// Queue ATMsQueue("atms");
+
+class ATMs
+{
+public:
+    Store _Store;
+    Queue _Queue;
+    bool AreProcessed;
+    ATMs(int atmCount) : _Store(atmCount), _Queue("atms")
+    {
+        AreProcessed = false;
+    }
+};
+
+ATMs ATMsQueue(4);
+
+class PriorityStore : public Store
+{
+public:
+    PriorityStore(int capacity) : Store(capacity) {}
+};
 
 class Visitor : public Process
 {
 public:
     Visitor();
     void Behavior() override;
-    void setGoForCoffee();
+    void setGoForCoffee() { goesForCoffee = true; }
+    void setSkipATM() { skipATM = true; }
 
 private:
     bool goesForCoffee;
+    bool skipATM;
     void WentForCoffee();
 };
 
@@ -43,9 +67,6 @@ public:
     }
 };
 // Some fun logic incoming, there it was left
-class ATM : public Process
-{
-};
 
 class VisitorGenerator : public Event
 {
@@ -63,8 +84,47 @@ private:
         this->Activate(Time + Exponential(ExpTime));
     }
 };
-class CashGuysGenerator : public Event
+class CashGuys : public Process
 {
+private:
+    int frequencyArrival;
+
+public:
+    bool atmsAreProcessing = false;
+    CashGuys(int frequencyArrival)
+    {
+        this->frequencyArrival = frequencyArrival;
+    }
+    void Behavior() override
+    {
+        while (true)
+        {
+            Wait(Exponential(frequencyArrival));
+            auto atmCount = ATMsQueue._Store.Capacity();
+            auto takenATMs = 0;
+            while (takenATMs < atmCount)
+            {
+                Priority = 1;
+                Into(ATMsQueue._Queue);
+                Passivate();
+                Enter(ATMsQueue._Store);
+            }
+
+            while (!ATMsQueue._Queue.Empty())
+            {
+                Visitor *visitor = dynamic_cast<Visitor *>(ATMsQueue._Queue.GetFirst());
+                if (visitor)
+                {
+                    visitor->setSkipATM();
+                }
+            }
+            ATMsQueue.AreProcessed = true;
+
+            Wait(Normal(minutes(30), minutes(5)));
+            Leave(ATMsQueue._Store, atmCount);
+            ATMsQueue.AreProcessed = true;
+        }
+    }
 };
 
 void Visitor::Behavior()
@@ -96,7 +156,23 @@ void Visitor::Behavior()
     }
     else if (serviceType >= 0.2 && serviceType < 0.7)
     {
-        // ATM
+        if (ATMsQueue.AreProcessed)
+        {
+            return;
+        }
+
+        Into(ATMsQueue._Queue);
+        Passivate();
+
+        if (ATMsQueue.AreProcessed)
+        {
+            return;
+        }
+
+        Enter(ATMsQueue._Store);
+        Wait(Exponential(minutes(3)));
+        Leave(ATMsQueue._Store);
+        ATMsQueue._Queue.GetFirst()->Activate();
     }
     else
     {
