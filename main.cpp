@@ -42,7 +42,7 @@ public:
         visitor->setGoForCoffee();
     }
 };
-
+// Some fun logic incoming, there it was left
 class ATM : public Process
 {
 };
