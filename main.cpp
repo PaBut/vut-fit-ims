@@ -35,7 +35,7 @@ public:
 class Visitor : public Process
 {
 public:
-    Visitor(): goesForCoffee(false), skipATM(false){}
+    Visitor() : goesForCoffee(false), skipATM(false) {}
     void Behavior() override;
     void setGoForCoffee() { goesForCoffee = true; }
     void setSkipATM() { skipATM = true; }
@@ -146,7 +146,7 @@ void Visitor::Behavior()
 
                 if (goesForCoffee)
                 {
-                    Out(); // Potential problem source
+                    // Out(); // Potential problem source
                     WentForCoffee();
                     goesForCoffee = false;
                 }
@@ -160,7 +160,8 @@ void Visitor::Behavior()
                 ReceptionQueue.GetFirst()->Activate();
             }
 
-            if(Random() < 0.2){
+            if (Random() < 0.2)
+            {
                 break;
             }
         }
@@ -172,8 +173,11 @@ void Visitor::Behavior()
                 return;
             }
 
-            Into(ATMsQueue._Queue);
-            Passivate();
+            if (ATMsQueue._Store.Empty())
+            {
+                Into(ATMsQueue._Queue);
+                Passivate();
+            }
 
             if (ATMsQueue.AreProcessed)
             {
@@ -183,8 +187,11 @@ void Visitor::Behavior()
             Enter(ATMsQueue._Store);
             Wait(Exponential(minutes(3)));
             Leave(ATMsQueue._Store);
-            ATMsQueue._Queue.GetFirst()->Activate();
-            
+            if (!ATMsQueue._Queue.Empty())
+            {
+                ATMsQueue._Queue.GetFirst()->Activate();
+            }
+
             break;
         }
         else if (serviceType >= 0.6 && serviceType < 0.9)
@@ -210,13 +217,15 @@ void Visitor::Behavior()
 
                 if (goesForCoffee)
                 {
-                    Out(); // Potential problem source
+                    // Out(); // Potential problem source
                     WentForCoffee();
                     goesForCoffee = false;
                 }
             }
             Enter(Consultants);
-            ConsultantsQueue.GetFirst()->Activate();
+            if(!ConsultantsQueue.Empty()){
+                ConsultantsQueue.GetFirst()->Activate();
+            }
 
             Priority = 0;
 
