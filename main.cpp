@@ -1,8 +1,8 @@
 #include "simlib.h"
 
+#define seconds(sec) sec
 #define minutes(min) min * 60
-#define hours(hours) hours * 60 * 60
-#define seconds(sec) sec * 1
+#define hours(hours) minutes(hours * 60)
 
 Facility VoucherMachine("voucher machine");
 Facility Reception("reception");
@@ -11,8 +11,6 @@ Facility ComplaintDesk("complaint desk");
 Store Consultants(5);
 Queue ConsultantsQueue("consultants");
 Store CoffeeMachines(3);
-// Store ATMs(4);
-// Queue ATMsQueue("atms");
 
 class ATMs
 {
@@ -134,145 +132,167 @@ public:
 
 void Visitor::Behavior()
 {
-    auto serviceType = Random();
-    if (serviceType < 0.2)
+    while (true)
     {
-        // Reception processing
-        while (Reception.Busy())
+        auto serviceType = Random();
+        if (serviceType < 0.2)
         {
-            Into(ReceptionQueue);
-            auto wantsCoffee = new VisitorWantsCoffee(this, minutes(8));
-            wantsCoffee->Activate();
-
-            if (goesForCoffee)
+            // Reception processing
+            while (Reception.Busy())
             {
-                Out();
-                WentForCoffee();
+                Into(ReceptionQueue);
+                auto wantsCoffee = new VisitorWantsCoffee(this, minutes(8));
+                wantsCoffee->Activate();
+
+                if (goesForCoffee)
+                {
+                    Out(); // Potential problem source
+                    WentForCoffee();
+                }
+            }
+
+            Seize(Reception);
+            Wait(Normal(minutes(5), minutes(2)));
+            Release(Reception);
+            if (!ReceptionQueue.Empty())
+            {
+                ReceptionQueue.GetFirst()->Activate();
+            }
+
+            if(Random() < 0.2){
+                break;
             }
         }
-
-        Seize(Reception);
-        Wait(Normal(minutes(5), minutes(2)));
-        Release(Reception);
-        if (!ReceptionQueue.Empty())
+        else if (serviceType >= 0.2 && serviceType < 0.6)
         {
-            ReceptionQueue.GetFirst()->Activate();
-        }
-    }
-    else if (serviceType >= 0.2 && serviceType < 0.7)
-    {
-        if (ATMsQueue.AreProcessed)
-        {
-            return;
-        }
-
-        Into(ATMsQueue._Queue);
-        Passivate();
-
-        if (ATMsQueue.AreProcessed)
-        {
-            return;
-        }
-
-        Enter(ATMsQueue._Store);
-        Wait(Exponential(minutes(3)));
-        Leave(ATMsQueue._Store);
-        ATMsQueue._Queue.GetFirst()->Activate();
-    }
-    else
-    {
-        // Consultants
-        auto isPremium = Random();
-        if (isPremium < 0.85)
-        {
-            Seize(VoucherMachine);
-            Wait(Normal(seconds(20), seconds(5)));
-            Release(VoucherMachine);
-        }
-        while (Consultants.Free() == 0)
-        {
-            // function to check if the visitor goes for coffee
-            Into(ConsultantsQueue);
-            auto wantsCoffee = new VisitorWantsCoffee(this, minutes(8));
-            wantsCoffee->Activate();
-
-            if (goesForCoffee)
+            // ATMs
+            if (ATMsQueue.AreProcessed)
             {
-                // TODO pasha lox
-                Out();
-                WentForCoffee();
-            }
-        }
-        Enter(Consultants);
-
-        // documents check
-        auto isDocumentsValid = Random();
-        if (isDocumentsValid < 0.25)
-        {
-            // No
-            Leave(Consultants);
-            // Make a complaint
-            MakeAComplaint(0.75);
-            return;
-        }
-        else
-        {
-            // Yes
-            Wait(Normal(minutes(10), minutes(2)));
-            Leave(Consultants);
-            auto consulatationProccess = Random();
-            if (consulatationProccess < 0.5)
-            {
-                // Registration
-                Wait(Normal(minutes(20), minutes(5)));
-                Leave(Consultants);
                 return;
             }
-            else if (consulatationProccess >= 0.5 && consulatationProccess < 0.7)
+
+            Into(ATMsQueue._Queue);
+            Passivate();
+
+            if (ATMsQueue.AreProcessed)
             {
-                // Investment plan
-                Wait(Normal(minutes(40), minutes(10)));
-                Leave(Consultants);
                 return;
             }
-            else if (consulatationProccess >= 0.5 && consulatationProccess < 0.7)
+
+            Enter(ATMsQueue._Store);
+            Wait(Exponential(minutes(3)));
+            Leave(ATMsQueue._Store);
+            ATMsQueue._Queue.GetFirst()->Activate();
+            
+            break;
+        }
+        else if (serviceType >= 0.6 && serviceType < 0.9)
+        {
+            // Consultants
+            auto isPremium = Random() < 0.85;
+            if (!isPremium)
             {
-                // Fraud investigation
-                Wait(Normal(minutes(10), minutes(2)));
-                auto isSolutionFound = Random();
-                if (isSolutionFound < 0.2)
+                Seize(VoucherMachine);
+                Wait(Normal(seconds(20), seconds(5)));
+                Release(VoucherMachine);
+            }
+            while (Consultants.Free() == 0)
+            {
+                // function to check if the visitor goes for coffee
+                if (isPremium)
                 {
-                    // Yes
-                    Leave(Consultants);
-                    return;
+                    Priority = 1;
                 }
-                else
+                Into(ConsultantsQueue);
+                auto wantsCoffee = new VisitorWantsCoffee(this, minutes(8));
+                wantsCoffee->Activate();
+
+                if (goesForCoffee)
                 {
-                    // No
-                    Leave(Consultants);
-                    MakeAComplaint(0.8);
-                    return;
+                    Out(); // Potential problem source
+                    WentForCoffee();
                 }
+            }
+            Enter(Consultants);
+            ConsultantsQueue.GetFirst()->Activate();
+
+            Priority = 0;
+
+            // documents check
+            auto isDocumentsValid = Random();
+            if (isDocumentsValid < 0.25)
+            {
+                // No
+                Leave(Consultants);
+                // Make a complaint
+                MakeAComplaint(0.75);
+                return;
             }
             else
             {
-                // Taking a loan Background check
-                auto isBackgroundCheckValid = Random();
-                if (isBackgroundCheckValid < 0.8)
+                // Yes
+                Wait(Normal(minutes(10), minutes(2)));
+                Leave(Consultants);
+                auto consulatationProccess = Random();
+                if (consulatationProccess < 0.5)
                 {
-                    // Yes
-                    Wait(Normal(minutes(30), minutes(5)));
+                    // Registration
+                    Wait(Normal(minutes(20), minutes(5)));
                     Leave(Consultants);
                     return;
+                }
+                else if (consulatationProccess >= 0.5 && consulatationProccess < 0.7)
+                {
+                    // Investment plan
+                    Wait(Normal(minutes(40), minutes(10)));
+                    Leave(Consultants);
+                    return;
+                }
+                else if (consulatationProccess >= 0.5 && consulatationProccess < 0.7)
+                {
+                    // Fraud investigation
+                    Wait(Normal(minutes(10), minutes(2)));
+                    auto isSolutionFound = Random();
+                    if (isSolutionFound < 0.2)
+                    {
+                        // Yes
+                        Leave(Consultants);
+                        return;
+                    }
+                    else
+                    {
+                        // No
+                        Leave(Consultants);
+                        MakeAComplaint(0.8);
+                        return;
+                    }
                 }
                 else
                 {
-                    // No
-                    Leave(Consultants);
-                    MakeAComplaint(0.4);
-                    return;
+                    // Taking a loan Background check
+                    auto isBackgroundCheckValid = Random();
+                    if (isBackgroundCheckValid < 0.8)
+                    {
+                        // Yes
+                        Wait(Normal(minutes(30), minutes(5)));
+                        Leave(Consultants);
+                        return;
+                    }
+                    else
+                    {
+                        // No
+                        Leave(Consultants);
+                        MakeAComplaint(0.4);
+                        return;
+                    }
                 }
             }
+        }
+        else
+        {
+            Priority = -1;
+            MakeAComplaint(1);
+            break;
         }
     }
 };
@@ -297,5 +317,23 @@ void Visitor::MakeAComplaint(double percent)
 
 int main()
 {
+    SetOutput("bank.out");
+    Init(hours(9));
+    (new VisitorGenerator(minutes(5)))->Activate();
+    (new CashGuys(hours(6)))->Activate();
+    Run();
+
+    ComplaintDesk.Output();
+    VoucherMachine.Output();
+    Reception.Output();
+    Consultants.Output();
+    ATMsQueue._Store.Output();
+
     return 0;
 }
+
+// Priority for premium users towards consultans - Done
+// Change the probability for complaints from the beginning - Done
+// After consultant priority for complaint is higher - Done
+
+// User returns back with some probabily !!!!!!!
