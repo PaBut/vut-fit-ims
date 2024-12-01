@@ -2,13 +2,13 @@
 
 #define seconds(sec) sec
 #define minutes(min) min * 60
-#define hours(hours) minutes(hours * 60)
+#define hours(h) minutes(h * 60)
 
 Facility VoucherMachine("voucher machine");
 Facility Reception("reception");
 Queue ReceptionQueue("reception");
 Facility ComplaintDesk("complaint desk");
-Store Consultants(5);
+Store Consultants(4);
 Queue ConsultantsQueue("consultants");
 Store CoffeeMachines(3);
 
@@ -24,27 +24,26 @@ public:
     }
 };
 
-ATMs ATMsQueue(4);
-
-class PriorityStore : public Store
-{
-public:
-    PriorityStore(int capacity) : Store(capacity) {}
-};
+ATMs ATMsQueue(3);
 
 class Visitor : public Process
 {
 public:
-    Visitor() : goesForCoffee(false), skipATM(false) {}
+    Visitor() : goesForCoffee(false){}
     void Behavior() override;
     void setGoForCoffee() { goesForCoffee = true; }
-    void setSkipATM() { skipATM = true; }
 
 private:
     bool goesForCoffee;
-    bool skipATM;
     void WentForCoffee();
     void MakeAComplaint(double percent);
+    void CallNextCustomer()
+    {
+        if (!ConsultantsQueue.Empty())
+        {
+            ConsultantsQueue.GetFirst()->Activate();
+        }
+    }
 };
 
 class VisitorWantsCoffee : public Process
@@ -62,7 +61,6 @@ public:
 
     void Behavior() override
     {
-        visitor->Passivate();
         Wait(maxAwaitTime);
         visitor->Activate();
         visitor->setGoForCoffee();
@@ -105,51 +103,58 @@ public:
             Wait(Exponential(frequencyArrival));
             auto atmCount = ATMsQueue._Store.Capacity();
             auto takenATMs = 0;
+            Priority = 1;
             while (takenATMs < atmCount)
             {
-                Priority = 1;
-                Into(ATMsQueue._Queue);
-                Passivate();
-                Enter(ATMsQueue._Store);
-            }
-
-            while (!ATMsQueue._Queue.Empty())
-            {
-                Visitor *visitor = dynamic_cast<Visitor *>(ATMsQueue._Queue.GetFirst());
-                if (visitor)
-                {
-                    visitor->setSkipATM();
+                if(ATMsQueue._Store.Full()){
+                    ATMsQueue._Queue.InsFirst(this);
+                    Passivate();
                 }
+                Enter(ATMsQueue._Store);
+                takenATMs++;
             }
-            ATMsQueue.AreProcessed = true;
 
+            ATMsQueue.AreProcessed = true;
             Wait(Normal(minutes(30), minutes(5)));
             Leave(ATMsQueue._Store, atmCount);
-            ATMsQueue.AreProcessed = true;
+            ATMsQueue.AreProcessed = false;
         }
     }
 };
 
 void Visitor::Behavior()
 {
-    while (true)
+    bool needsAnotherService = true;
+    while (needsAnotherService)
     {
+        needsAnotherService = false;
         auto serviceType = Random();
         if (serviceType < 0.2)
         {
             // Reception processing
-            while (Reception.Busy())
+            while (Reception.Busy() || !ReceptionQueue.Empty())
             {
                 Into(ReceptionQueue);
-                auto wantsCoffee = new VisitorWantsCoffee(this, minutes(8));
+                auto wantsCoffee = new VisitorWantsCoffee(this, minutes(4));
                 wantsCoffee->Activate();
+                Passivate();
 
                 if (goesForCoffee)
                 {
-                    // Out(); // Potential problem source
+                    Out();
                     WentForCoffee();
                     goesForCoffee = false;
                 }
+                else
+                {
+                    wantsCoffee->Cancel();
+                    break;
+                }
+            }
+
+            if (isInQueue())
+            {
+                Out();
             }
 
             Seize(Reception);
@@ -160,9 +165,9 @@ void Visitor::Behavior()
                 ReceptionQueue.GetFirst()->Activate();
             }
 
-            if (Random() < 0.2)
+            if (Random() < 0.8)
             {
-                break;
+                needsAnotherService = true;
             }
         }
         else if (serviceType >= 0.2 && serviceType < 0.6)
@@ -173,10 +178,11 @@ void Visitor::Behavior()
                 return;
             }
 
-            if (ATMsQueue._Store.Empty())
+            if (!ATMsQueue._Store.Empty())
             {
                 Into(ATMsQueue._Queue);
                 Passivate();
+                // Out();
             }
 
             if (ATMsQueue.AreProcessed)
@@ -187,24 +193,24 @@ void Visitor::Behavior()
             Enter(ATMsQueue._Store);
             Wait(Exponential(minutes(3)));
             Leave(ATMsQueue._Store);
+
             if (!ATMsQueue._Queue.Empty())
             {
                 ATMsQueue._Queue.GetFirst()->Activate();
             }
-
-            break;
         }
         else if (serviceType >= 0.6 && serviceType < 0.9)
         {
             // Consultants
-            auto isPremium = Random() < 0.85;
+            auto isPremium = Random() < 0.15;
             if (!isPremium)
             {
                 Seize(VoucherMachine);
                 Wait(Normal(seconds(20), seconds(5)));
                 Release(VoucherMachine);
             }
-            while (Consultants.Free() == 0)
+
+            while (!Consultants.Free() || !ConsultantsQueue.Empty())
             {
                 // function to check if the visitor goes for coffee
                 if (isPremium)
@@ -214,18 +220,28 @@ void Visitor::Behavior()
                 Into(ConsultantsQueue);
                 auto wantsCoffee = new VisitorWantsCoffee(this, minutes(8));
                 wantsCoffee->Activate();
+                Passivate();
 
                 if (goesForCoffee)
                 {
-                    // Out(); // Potential problem source
+                    Out();
                     WentForCoffee();
                     goesForCoffee = false;
                 }
+                else
+                {
+                    wantsCoffee->Cancel();
+                    break;
+                }
             }
+            
+            /// ???
+            // if (isInQueue())
+            // {
+            //     Out();
+            // }
+
             Enter(Consultants);
-            if(!ConsultantsQueue.Empty()){
-                ConsultantsQueue.GetFirst()->Activate();
-            }
 
             Priority = 0;
 
@@ -235,47 +251,41 @@ void Visitor::Behavior()
             {
                 // No
                 Leave(Consultants);
+                CallNextCustomer();
                 // Make a complaint
                 MakeAComplaint(0.75);
-                return;
             }
             else
             {
                 // Yes
-                Wait(Normal(minutes(10), minutes(2)));
-                Leave(Consultants);
                 auto consulatationProccess = Random();
                 if (consulatationProccess < 0.5)
                 {
                     // Registration
                     Wait(Normal(minutes(20), minutes(5)));
                     Leave(Consultants);
-                    return;
+                    CallNextCustomer();
+                    // Could continue ?????
                 }
                 else if (consulatationProccess >= 0.5 && consulatationProccess < 0.7)
                 {
                     // Investment plan
                     Wait(Normal(minutes(40), minutes(10)));
                     Leave(Consultants);
-                    return;
+                    CallNextCustomer();
+                    // Could continue ?????
                 }
-                else if (consulatationProccess >= 0.5 && consulatationProccess < 0.7)
+                else if (consulatationProccess >= 0.7 && consulatationProccess < 0.8)
                 {
                     // Fraud investigation
                     Wait(Normal(minutes(10), minutes(2)));
                     auto isSolutionFound = Random();
-                    if (isSolutionFound < 0.2)
-                    {
-                        // Yes
-                        Leave(Consultants);
-                        return;
-                    }
-                    else
+                    Leave(Consultants);
+                    CallNextCustomer();
+                    if (isSolutionFound < 0.8)
                     {
                         // No
-                        Leave(Consultants);
                         MakeAComplaint(0.8);
-                        return;
                     }
                 }
                 else
@@ -287,14 +297,14 @@ void Visitor::Behavior()
                         // Yes
                         Wait(Normal(minutes(30), minutes(5)));
                         Leave(Consultants);
-                        return;
+                        CallNextCustomer();
                     }
                     else
                     {
                         // No
                         Leave(Consultants);
+                        CallNextCustomer();
                         MakeAComplaint(0.4);
-                        return;
                     }
                 }
             }
@@ -303,9 +313,10 @@ void Visitor::Behavior()
         {
             Priority = -1;
             MakeAComplaint(1);
-            break;
         }
     }
+
+    Terminate();
 };
 
 void Visitor::WentForCoffee()
@@ -317,7 +328,7 @@ void Visitor::WentForCoffee()
 
 void Visitor::MakeAComplaint(double percent)
 {
-    auto wantsMakeComplaint = random();
+    auto wantsMakeComplaint = Random();
     if (wantsMakeComplaint < percent)
     {
         Seize(ComplaintDesk);
@@ -328,17 +339,22 @@ void Visitor::MakeAComplaint(double percent)
 
 int main()
 {
+    RandomSeed(time(NULL));
     SetOutput("bank.out");
-    Init(hours(9));
+    Init(0, hours(9));
     (new VisitorGenerator(minutes(5)))->Activate();
     (new CashGuys(hours(6)))->Activate();
     Run();
 
+    CoffeeMachines.Output();
+    ConsultantsQueue.Output();
+    ReceptionQueue.Output();
     ComplaintDesk.Output();
     VoucherMachine.Output();
     Reception.Output();
     Consultants.Output();
     ATMsQueue._Store.Output();
+    ATMsQueue._Queue.Output();
 
     return 0;
 }
