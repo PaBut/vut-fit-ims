@@ -1,7 +1,9 @@
+// Authors: xbuten00(Pavlo Butenko), xkolia00(Nikita Koliada)
+
 #include "simlib.h"
 
 #define seconds(sec) sec
-#define minutes(min) min * 60
+#define minutes(min) seconds(min * 60)
 #define hours(h) minutes(h * 60)
 #define Norm(mean, sigma) std::max(0.0, Normal(mean, sigma))
 #define Exp(mean) std::max(0.0, Exponential(mean))
@@ -180,7 +182,6 @@ void Visitor::Behavior()
             {
                 Into(ATMsQueue._Queue);
                 Passivate();
-                // Out();
             }
 
             if (ATMsQueue.AreProcessed)
