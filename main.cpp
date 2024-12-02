@@ -17,6 +17,19 @@ Store* Consultants;
 Queue ConsultantsQueue("consultants");
 Store* CoffeeMachines;
 
+int consultant_services = 0;
+int successful_consultant_services = 0;
+int documents_invalid_count = 0;
+int total_customer_count = 0;
+int cash_replenishment_user_left = 0;
+
+int loan_count = 0;
+int investment_advice_count = 0;
+int fraud_processing_count = 0;
+int registration_count = 0;
+
+Histogram TimeInBank("Time spent in the bank", 0, 160, 20);
+
 class ATMs
 {
 public:
@@ -87,6 +100,7 @@ private:
     void Behavior()
     {
         (new Visitor())->Activate();
+        total_customer_count++;
         this->Activate(Time + Exp(ExpTime));
     }
 };
@@ -129,6 +143,7 @@ public:
 
 void Visitor::Behavior()
 {
+    auto entryTime = Time;
     bool needsAnotherService = true;
     while (needsAnotherService)
     {
@@ -176,7 +191,8 @@ void Visitor::Behavior()
             // ATMs
             if (ATMsQueue->AreProcessed)
             {
-                return;
+                cash_replenishment_user_left++;
+                break;
             }
 
             if (ATMsQueue->_Store.Full())
@@ -187,7 +203,8 @@ void Visitor::Behavior()
 
             if (ATMsQueue->AreProcessed)
             {
-                return;
+                cash_replenishment_user_left++;
+                break;
             }
 
             Enter(ATMsQueue->_Store);
@@ -206,7 +223,7 @@ void Visitor::Behavior()
             if (!isPremium)
             {
                 Seize(VoucherMachine);
-                Wait(Norm(seconds(20), seconds(5)));
+                Wait(Norm(seconds(30), seconds(10)));
                 Release(VoucherMachine);
             }
 
@@ -237,6 +254,7 @@ void Visitor::Behavior()
             
 
             Enter(*Consultants);
+            consultant_services++;
 
             Priority = 0;
             Wait(Exp(minutes(1)));
@@ -247,6 +265,7 @@ void Visitor::Behavior()
             {
                 // No
                 Leave(*Consultants);
+                documents_invalid_count++;
                 CallNextCustomer();
                 // Make a complaint
                 MakeAComplaint(0.75);
@@ -260,6 +279,8 @@ void Visitor::Behavior()
                     // Registration
                     Wait(Norm(minutes(20), minutes(5)));
                     Leave(*Consultants);
+                    successful_consultant_services++;
+                    registration_count++;
                     CallNextCustomer();
                     // Could continue ?????
                 }
@@ -268,6 +289,8 @@ void Visitor::Behavior()
                     // Investment plan
                     Wait(Norm(minutes(40), minutes(10)));
                     Leave(*Consultants);
+                    successful_consultant_services++;
+                    investment_advice_count++;
                     CallNextCustomer();
                     // Could continue ?????
                 }
@@ -283,6 +306,10 @@ void Visitor::Behavior()
                         // No
                         MakeAComplaint(0.8);
                     }
+                    else{
+                        successful_consultant_services++;
+                        fraud_processing_count++;
+                    }
                 }
                 else
                 {
@@ -293,6 +320,8 @@ void Visitor::Behavior()
                         // Yes
                         Wait(Norm(minutes(30), minutes(5)));
                         Leave(*Consultants);
+                        successful_consultant_services++;
+                        loan_count++;
                         CallNextCustomer();
                     }
                     else
@@ -311,8 +340,8 @@ void Visitor::Behavior()
             MakeAComplaint(1);
         }
     }
-
-    Terminate();
+    TimeInBank(Time - entryTime);
+    // Terminate();
 };
 
 void Visitor::WentForCoffee()
@@ -374,6 +403,18 @@ int main(int argc, char** argv)
     Consultants->Output();
     ATMsQueue->_Store.Output();
     ATMsQueue->_Queue.Output();
+    TimeInBank.Output();
+
+    Print("Total visitors: %d\n", total_customer_count);
+    Print("Consultation success rate: %.2f%%\n", successful_consultant_services / float(consultant_services) * 100);
+    Print("Invalid documents rate: %.2f%%\n", documents_invalid_count / float(consultant_services) * 100);
+    Print("Count of visitors left due to atm replenishment: %d\n", cash_replenishment_user_left);
+    Print("Taken loan count: %d\n", loan_count);
+    Print("Invetsment services count: %d\n", investment_advice_count);
+    Print("Successfully processed fraud count: %d\n", fraud_processing_count);
+    Print("Registration count: %d\n", registration_count);
+
+
 
     delete ATMsQueue;
     delete CoffeeMachines;
