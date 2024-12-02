@@ -28,8 +28,6 @@ int investment_advice_count = 0;
 int fraud_processing_count = 0;
 int registration_count = 0;
 
-Histogram TimeInBank("Time spent in the bank", 0, 160, 20);
-
 class ATMs
 {
 public:
@@ -340,8 +338,6 @@ void Visitor::Behavior()
             MakeAComplaint(1);
         }
     }
-    TimeInBank(Time - entryTime);
-    // Terminate();
 };
 
 void Visitor::WentForCoffee()
@@ -403,7 +399,6 @@ int main(int argc, char** argv)
     Consultants->Output();
     ATMsQueue->_Store.Output();
     ATMsQueue->_Queue.Output();
-    TimeInBank.Output();
 
     Print("Total visitors: %d\n", total_customer_count);
     Print("Consultation success rate: %.2f%%\n", successful_consultant_services / float(consultant_services) * 100);
@@ -414,17 +409,9 @@ int main(int argc, char** argv)
     Print("Successfully processed fraud count: %d\n", fraud_processing_count);
     Print("Registration count: %d\n", registration_count);
 
-
-
     delete ATMsQueue;
     delete CoffeeMachines;
     delete Consultants;
 
     return 0;
 }
-
-// Priority for premium users towards consultans - Done
-// Change the probability for complaints from the beginning - Done
-// After consultant priority for complaint is higher - Done
-
-// User returns back with some probabily !!!!!!!
