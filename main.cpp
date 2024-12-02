@@ -3,14 +3,16 @@
 #define seconds(sec) sec
 #define minutes(min) min * 60
 #define hours(h) minutes(h * 60)
-
+#define Norm(mean, sigma) std::max(0.0, Normal(mean, sigma))
+#define Exp(mean) std::max(0.0, Exponential(mean))
+ 
 Facility VoucherMachine("voucher machine");
 Facility Reception("reception");
 Queue ReceptionQueue("reception");
 Facility ComplaintDesk("complaint desk");
-Store Consultants(4);
+Store Consultants("consultants", 4);
 Queue ConsultantsQueue("consultants");
-Store CoffeeMachines(3);
+Store CoffeeMachines("coffeeMachines", 3);
 
 class ATMs
 {
@@ -18,7 +20,7 @@ public:
     Store _Store;
     Queue _Queue;
     bool AreProcessed;
-    ATMs(int atmCount) : _Store(atmCount), _Queue("atms")
+    ATMs(int atmCount) : _Store("atms", atmCount), _Queue("atms")
     {
         AreProcessed = false;
     }
@@ -82,7 +84,7 @@ private:
     void Behavior()
     {
         (new Visitor())->Activate();
-        this->Activate(Time + Exponential(ExpTime));
+        this->Activate(Time + Exp(ExpTime));
     }
 };
 class CashGuys : public Process
@@ -100,7 +102,7 @@ public:
     {
         while (true)
         {
-            Wait(Exponential(frequencyArrival));
+            Wait(Exp(frequencyArrival));
             auto atmCount = ATMsQueue._Store.Capacity();
             auto takenATMs = 0;
             Priority = 1;
@@ -115,7 +117,7 @@ public:
             }
 
             ATMsQueue.AreProcessed = true;
-            Wait(Normal(minutes(30), minutes(5)));
+            Wait(Norm(minutes(30), minutes(5)));
             Leave(ATMsQueue._Store, atmCount);
             ATMsQueue.AreProcessed = false;
         }
@@ -152,13 +154,9 @@ void Visitor::Behavior()
                 }
             }
 
-            if (isInQueue())
-            {
-                Out();
-            }
 
             Seize(Reception);
-            Wait(Normal(minutes(5), minutes(2)));
+            Wait(Norm(minutes(5), minutes(2)));
             Release(Reception);
             if (!ReceptionQueue.Empty())
             {
@@ -178,7 +176,7 @@ void Visitor::Behavior()
                 return;
             }
 
-            if (!ATMsQueue._Store.Empty())
+            if (!ATMsQueue._Store.Full())
             {
                 Into(ATMsQueue._Queue);
                 Passivate();
@@ -191,7 +189,7 @@ void Visitor::Behavior()
             }
 
             Enter(ATMsQueue._Store);
-            Wait(Exponential(minutes(3)));
+            Wait(Exp(minutes(3)));
             Leave(ATMsQueue._Store);
 
             if (!ATMsQueue._Queue.Empty())
@@ -206,11 +204,11 @@ void Visitor::Behavior()
             if (!isPremium)
             {
                 Seize(VoucherMachine);
-                Wait(Normal(seconds(20), seconds(5)));
+                Wait(Norm(seconds(20), seconds(5)));
                 Release(VoucherMachine);
             }
 
-            while (!Consultants.Free() || !ConsultantsQueue.Empty())
+            while (Consultants.Full() || !ConsultantsQueue.Empty())
             {
                 // function to check if the visitor goes for coffee
                 if (isPremium)
@@ -235,15 +233,11 @@ void Visitor::Behavior()
                 }
             }
             
-            /// ???
-            // if (isInQueue())
-            // {
-            //     Out();
-            // }
 
             Enter(Consultants);
 
             Priority = 0;
+            Wait(Exp(minutes(1)));
 
             // documents check
             auto isDocumentsValid = Random();
@@ -262,7 +256,7 @@ void Visitor::Behavior()
                 if (consulatationProccess < 0.5)
                 {
                     // Registration
-                    Wait(Normal(minutes(20), minutes(5)));
+                    Wait(Norm(minutes(20), minutes(5)));
                     Leave(Consultants);
                     CallNextCustomer();
                     // Could continue ?????
@@ -270,7 +264,7 @@ void Visitor::Behavior()
                 else if (consulatationProccess >= 0.5 && consulatationProccess < 0.7)
                 {
                     // Investment plan
-                    Wait(Normal(minutes(40), minutes(10)));
+                    Wait(Norm(minutes(40), minutes(10)));
                     Leave(Consultants);
                     CallNextCustomer();
                     // Could continue ?????
@@ -278,7 +272,7 @@ void Visitor::Behavior()
                 else if (consulatationProccess >= 0.7 && consulatationProccess < 0.8)
                 {
                     // Fraud investigation
-                    Wait(Normal(minutes(10), minutes(2)));
+                    Wait(Norm(minutes(10), minutes(2)));
                     auto isSolutionFound = Random();
                     Leave(Consultants);
                     CallNextCustomer();
@@ -295,7 +289,7 @@ void Visitor::Behavior()
                     if (isBackgroundCheckValid < 0.8)
                     {
                         // Yes
-                        Wait(Normal(minutes(30), minutes(5)));
+                        Wait(Norm(minutes(30), minutes(5)));
                         Leave(Consultants);
                         CallNextCustomer();
                     }
