@@ -83,8 +83,6 @@ public:
     }
 };
 
-// Some fun logic incoming, there it was left
-
 class VisitorGenerator : public Event
 {
 public:
