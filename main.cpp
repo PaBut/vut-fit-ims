@@ -1,6 +1,7 @@
 // Authors: xbuten00(Pavlo Butenko), xkolia00(Nikita Koliada)
 
 #include "simlib.h"
+#include <unistd.h>
 
 #define seconds(sec) sec
 #define minutes(min) seconds(min * 60)
@@ -12,9 +13,9 @@ Facility VoucherMachine("voucher machine");
 Facility Reception("reception");
 Queue ReceptionQueue("reception");
 Facility ComplaintDesk("complaint desk");
-Store Consultants("consultants", 4);
+Store* Consultants;
 Queue ConsultantsQueue("consultants");
-Store CoffeeMachines("coffeeMachines", 3);
+Store* CoffeeMachines;
 
 class ATMs
 {
@@ -28,7 +29,7 @@ public:
     }
 };
 
-ATMs ATMsQueue(3);
+ATMs* ATMsQueue;
 
 class Visitor : public Process
 {
@@ -105,23 +106,23 @@ public:
         while (true)
         {
             Wait(Exp(frequencyArrival));
-            auto atmCount = ATMsQueue._Store.Capacity();
+            auto atmCount = ATMsQueue->_Store.Capacity();
             auto takenATMs = 0;
             Priority = 1;
             while (takenATMs < atmCount)
             {
-                if(ATMsQueue._Store.Full()){
-                    ATMsQueue._Queue.InsFirst(this);
+                if(ATMsQueue->_Store.Full()){
+                    ATMsQueue->_Queue.InsFirst(this);
                     Passivate();
                 }
-                Enter(ATMsQueue._Store);
+                Enter(ATMsQueue->_Store);
                 takenATMs++;
             }
 
-            ATMsQueue.AreProcessed = true;
+            ATMsQueue->AreProcessed = true;
             Wait(Norm(minutes(30), minutes(5)));
-            Leave(ATMsQueue._Store, atmCount);
-            ATMsQueue.AreProcessed = false;
+            Leave(ATMsQueue->_Store, atmCount);
+            ATMsQueue->AreProcessed = false;
         }
     }
 };
@@ -173,29 +174,29 @@ void Visitor::Behavior()
         else if (serviceType >= 0.2 && serviceType < 0.6)
         {
             // ATMs
-            if (ATMsQueue.AreProcessed)
+            if (ATMsQueue->AreProcessed)
             {
                 return;
             }
 
-            if (!ATMsQueue._Store.Full())
+            if (!ATMsQueue->_Store.Full())
             {
-                Into(ATMsQueue._Queue);
+                Into(ATMsQueue->_Queue);
                 Passivate();
             }
 
-            if (ATMsQueue.AreProcessed)
+            if (ATMsQueue->AreProcessed)
             {
                 return;
             }
 
-            Enter(ATMsQueue._Store);
+            Enter(ATMsQueue->_Store);
             Wait(Exp(minutes(3)));
-            Leave(ATMsQueue._Store);
+            Leave(ATMsQueue->_Store);
 
-            if (!ATMsQueue._Queue.Empty())
+            if (!ATMsQueue->_Queue.Empty())
             {
-                ATMsQueue._Queue.GetFirst()->Activate();
+                ATMsQueue->_Queue.GetFirst()->Activate();
             }
         }
         else if (serviceType >= 0.6 && serviceType < 0.9)
@@ -209,7 +210,7 @@ void Visitor::Behavior()
                 Release(VoucherMachine);
             }
 
-            while (Consultants.Full() || !ConsultantsQueue.Empty())
+            while (Consultants->Full() || !ConsultantsQueue.Empty())
             {
                 // function to check if the visitor goes for coffee
                 if (isPremium)
@@ -235,7 +236,7 @@ void Visitor::Behavior()
             }
             
 
-            Enter(Consultants);
+            Enter(*Consultants);
 
             Priority = 0;
             Wait(Exp(minutes(1)));
@@ -245,7 +246,7 @@ void Visitor::Behavior()
             if (isDocumentsValid < 0.25)
             {
                 // No
-                Leave(Consultants);
+                Leave(*Consultants);
                 CallNextCustomer();
                 // Make a complaint
                 MakeAComplaint(0.75);
@@ -258,7 +259,7 @@ void Visitor::Behavior()
                 {
                     // Registration
                     Wait(Norm(minutes(20), minutes(5)));
-                    Leave(Consultants);
+                    Leave(*Consultants);
                     CallNextCustomer();
                     // Could continue ?????
                 }
@@ -266,7 +267,7 @@ void Visitor::Behavior()
                 {
                     // Investment plan
                     Wait(Norm(minutes(40), minutes(10)));
-                    Leave(Consultants);
+                    Leave(*Consultants);
                     CallNextCustomer();
                     // Could continue ?????
                 }
@@ -275,7 +276,7 @@ void Visitor::Behavior()
                     // Fraud investigation
                     Wait(Norm(minutes(10), minutes(2)));
                     auto isSolutionFound = Random();
-                    Leave(Consultants);
+                    Leave(*Consultants);
                     CallNextCustomer();
                     if (isSolutionFound < 0.8)
                     {
@@ -291,13 +292,13 @@ void Visitor::Behavior()
                     {
                         // Yes
                         Wait(Norm(minutes(30), minutes(5)));
-                        Leave(Consultants);
+                        Leave(*Consultants);
                         CallNextCustomer();
                     }
                     else
                     {
                         // No
-                        Leave(Consultants);
+                        Leave(*Consultants);
                         CallNextCustomer();
                         MakeAComplaint(0.4);
                     }
@@ -316,9 +317,9 @@ void Visitor::Behavior()
 
 void Visitor::WentForCoffee()
 {
-    Enter(CoffeeMachines);
+    Enter(*CoffeeMachines);
     Wait(minutes(1));
-    Leave(CoffeeMachines);
+    Leave(*CoffeeMachines);
 }
 
 void Visitor::MakeAComplaint(double percent)
@@ -332,8 +333,31 @@ void Visitor::MakeAComplaint(double percent)
     }
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    int opt;
+    int coffeeMachineCount = 3;
+    int atmsCount = 3;
+    int consultantCount = 4;
+
+    while ((opt = getopt(argc, argv, "c:a:s:")) != -1) {
+        switch (opt) {
+            case 'c':
+                coffeeMachineCount = std::stoi(optarg);
+                break;
+            case 's':
+                consultantCount = std::stoi(optarg);
+                break;
+            case 'a':
+                atmsCount = std::stoi(optarg);
+                break;
+        }
+    }
+
+    ATMsQueue = new ATMs(atmsCount);
+    CoffeeMachines = new Store("coffee machines", coffeeMachineCount);
+    Consultants = new Store("consultants", consultantCount);
+
     RandomSeed(time(NULL));
     SetOutput("bank.out");
     Init(0, hours(9));
@@ -341,15 +365,19 @@ int main()
     (new CashGuys(hours(6)))->Activate();
     Run();
 
-    CoffeeMachines.Output();
+    CoffeeMachines->Output();
     ConsultantsQueue.Output();
     ReceptionQueue.Output();
     ComplaintDesk.Output();
     VoucherMachine.Output();
     Reception.Output();
-    Consultants.Output();
-    ATMsQueue._Store.Output();
-    ATMsQueue._Queue.Output();
+    Consultants->Output();
+    ATMsQueue->_Store.Output();
+    ATMsQueue->_Queue.Output();
+
+    delete ATMsQueue;
+    delete CoffeeMachines;
+    delete Consultants;
 
     return 0;
 }
