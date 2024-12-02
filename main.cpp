@@ -179,7 +179,7 @@ void Visitor::Behavior()
                 return;
             }
 
-            if (!ATMsQueue->_Store.Full())
+            if (ATMsQueue->_Store.Full())
             {
                 Into(ATMsQueue->_Queue);
                 Passivate();
@@ -191,7 +191,7 @@ void Visitor::Behavior()
             }
 
             Enter(ATMsQueue->_Store);
-            Wait(Exp(minutes(3)));
+            Wait(Exp(minutes(6)));
             Leave(ATMsQueue->_Store);
 
             if (!ATMsQueue->_Queue.Empty())
